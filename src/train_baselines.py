@@ -16,17 +16,27 @@ Run:  .venv/bin/python src/train_baselines.py
 
 from __future__ import annotations
 
+import os
 import warnings
 from pathlib import Path
+
+# LightGBM uses native OpenMP. On macOS, nested parallelism from
+# GridSearchCV + LightGBM can segfault inside libomp/lib_lightgbm, especially
+# when launched from a Jupyter kernel. Keep this phase conservative and stable.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+os.environ.setdefault(
+    "MPLCONFIGDIR",
+    str(Path(__file__).resolve().parents[1] / ".matplotlib-cache"),
+)
 
 import numpy as np
 
 # ColumnTransformer yields a bare numpy array; LightGBM's sklearn wrapper warns
 # about missing feature names on predict. Cosmetic — silence for clean output.
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
-# Nested parallelism (GridSearchCV n_jobs=-1 over an estimator with n_jobs=-1)
-# makes joblib warn it can't propagate config to workers. Harmless — silence it.
-warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
 from lightgbm import LGBMClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
@@ -38,15 +48,21 @@ import preprocess as P
 RESULTS = D.REPO_ROOT / "results"
 FIG = RESULTS / "figures"
 RANDOM_STATE = D.RANDOM_STATE
+N_JOBS = int(os.environ.get("NIDS_N_JOBS", "1"))
 
 # Light search grids (baseline, not the star — a couple of combos each).
 GRIDS = {
     "RandomForest": (
-        RandomForestClassifier(random_state=RANDOM_STATE, n_jobs=-1),
+        RandomForestClassifier(random_state=RANDOM_STATE, n_jobs=N_JOBS),
         {"n_estimators": [300], "max_depth": [None, 25]},
     ),
     "LightGBM": (
-        LGBMClassifier(random_state=RANDOM_STATE, n_jobs=-1, verbose=-1),
+        LGBMClassifier(
+            random_state=RANDOM_STATE,
+            n_jobs=1,
+            num_threads=1,
+            verbose=-1,
+        ),
         {"n_estimators": [400], "num_leaves": [31, 63]},
     ),
 }
@@ -56,7 +72,7 @@ def tune_and_fit(name, X_train, y_train):
     """Light CV search on train only; return (best_estimator, best_params)."""
     estimator, grid = GRIDS[name]
     cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE)
-    search = GridSearchCV(estimator, grid, scoring="f1_macro", cv=cv, n_jobs=-1)
+    search = GridSearchCV(estimator, grid, scoring="f1_macro", cv=cv, n_jobs=N_JOBS)
     search.fit(X_train, y_train)
     print(f"    {name}: best {search.best_params_}  "
           f"(cv f1_macro={search.best_score_:.4f})")
