@@ -83,12 +83,17 @@ def _loader(X: np.ndarray, y: np.ndarray, shuffle: bool):
 def train_model(X_train: np.ndarray, y_train: np.ndarray, n_classes: int,
                 class_weight: np.ndarray | None = None,
                 device: torch.device | None = None,
+                seed: int = SEED,
                 verbose: bool = False) -> MLP:
-    """Train with early stopping on a stratified validation split."""
+    """Train with early stopping on a stratified validation split.
+
+    ``seed`` controls weight init, the validation split, and shuffling — pass
+    different seeds to measure run-to-run stability.
+    """
     device = device or get_device()
-    set_seed()
+    set_seed(seed)
     X_tr, X_val, y_tr, y_val = train_test_split(
-        X_train, y_train, test_size=0.15, stratify=y_train, random_state=SEED)
+        X_train, y_train, test_size=0.15, stratify=y_train, random_state=seed)
 
     model = MLP(X_train.shape[1], n_classes).to(device)
     weight_t = (torch.as_tensor(class_weight, dtype=torch.float32).to(device)

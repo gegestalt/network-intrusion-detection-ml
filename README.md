@@ -31,6 +31,13 @@ this project.
 | MLP (unweighted) | **0.810** | **0.563** | 0.013 | 0.269 |
 | MLP (class-weighted) | 0.798 | 0.561 | **0.122** | **0.537** |
 
+**Reproducibility (5 seeds, CPU — see [`results/stability.md`](results/stability.md)):**
+RF 5-class macro-F1 **0.502 ± 0.008**; MLP-unweighted **0.577 ± 0.046** (high
+variance — a single run is unreliable); MLP-weighted **0.568 ± 0.012** with U2R
+recall **0.51 ± 0.06** vs unweighted **0.21 ± 0.12**. Takeaway: class weighting
+does *not* significantly change macro-F1, but it **reliably** rescues rare-class
+recall. Report mean ± std, never a single run.
+
 **Three findings that matter more than the numbers:**
 
 1. **The generalization gap is real and deliberate.** Models scored **~0.99
