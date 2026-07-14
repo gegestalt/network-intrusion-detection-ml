@@ -4,7 +4,7 @@ description: >-
   Conventions for this multi-dataset network-intrusion-detection ML study
   (NSL-KDD, UNSW-NB15, CICIDS2017). Load whenever loading/preprocessing any of
   these datasets, building the pipeline, training/evaluating models (RandomForest,
-  XGBoost/LightGBM, MLP), producing confusion matrices / per-class F1, or writing
+  LightGBM, MLP), producing confusion matrices / per-class F1, or writing
   up results. Encodes dataset layouts, preprocessing rules, the evaluation
   protocol (official splits where they exist; per-class + macro F1; confusion
   matrices to results/), the deliverable-first working order, and the results
@@ -71,9 +71,16 @@ data/
 - Binary = BENIGN vs attack. Multiclass = grouped families: DoS (Hulk/GoldenEye/
   slowloris/Slowhttptest), DDoS, PortScan, BruteForce (FTP/SSH-Patator),
   WebAttack (BruteForce/XSS/SQLi), Bot, Infiltration, Heartbleed, + Normal.
-- **Split: stratified 70/30** (fixed seed), stratified on the fine label so every
-  class is in both sets. This is *in-distribution* (easier than NSL/UNSW official
-  splits) — state this caveat by every CICIDS result.
+- **Split (primary): stratified 70/30** (fixed seed), stratified on the fine
+  label so every class is in both sets. This is *in-distribution* (easier than
+  NSL/UNSW official splits) — state this caveat by every CICIDS result.
+- **Split (secondary): temporal.** CICIDS was captured over 5 consecutive
+  weekdays; also train on earlier days / test on later days and contrast with the
+  stratified split. The stratified-vs-temporal gap is the "detection goes stale
+  as attacks evolve" story in one table. If runtime on the sample is
+  unreasonable, skip it and record that under limitations instead. (Caveat:
+  several attack classes are confined to a single day, so a temporal split leaves
+  them test-only — expected, and part of the point.)
 - **Dev on a stratified 20-30% sample** (preserve rare classes — Heartbleed=11,
   Infiltration=36 — in FULL); scale up only if training time is reasonable.
   Rare classes: Heartbleed, Infiltration.
@@ -85,6 +92,17 @@ data/
 - Numeric → `StandardScaler()` (trees are scale-invariant, but one shared
   pipeline keeps RF/boosting/MLP strictly apples-to-apples).
 - Two label schemes per dataset: **binary** and **multiclass**.
+
+## Models (approved scope)
+- **Trees:** RandomForest + **LightGBM**. One gradient-boosting library only —
+  LightGBM over XGBoost for its histogram-based speed and low memory footprint,
+  which matters when we scale to CICIDS's 2.8M flows on a laptop. Sensible
+  defaults + at most a **light** CV search — it's a strong baseline, not the star;
+  no extensive tuning detour.
+- **MLP (PyTorch):** 2-3 hidden layers, dropout, early stopping, MPS. On the MLP,
+  **handle imbalance explicitly via class weights** and report rare-class recall
+  (U2R/R2L; Worms; Heartbleed/Infiltration) **with vs without** weighting — the
+  contrast is a required result, with a teach-up before implementing.
 
 ## Evaluation protocol (identical for every model & dataset)
 Report on the held-out test set (official where it exists; constructed for CICIDS):
