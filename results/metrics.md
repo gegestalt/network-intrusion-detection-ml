@@ -47,3 +47,14 @@ Official split; metrics on the held-out test set. Leading with **macro-F1** and 
 | R2L | 0.6536 | 0.0693 | 0.1254 | 2,885 |
 | U2R | 0.0088 | 0.1343 | 0.0165 | 67 |
 
+
+# NSL-KDD — Phase 4: MLP + class-weighting ablation
+
+Same preprocessing and evaluation as Phase 3. The point of this phase is the **with vs without class-weighting** contrast on the rare classes.
+
+| Variant | Task | Accuracy | Macro-F1 | Rare-class recall |
+| --- | --- | ---: | ---: | --- |
+| MLP (unweighted) | binary | 0.7893 | 0.7893 | attack 0.678 |
+| MLP (weighted) | binary | 0.8105 | 0.8104 | attack 0.689 |
+| MLP (unweighted) | multiclass | 0.7816 | 0.6086 | R2L 0.080 / U2R 0.284 |
+| MLP (weighted) | multiclass | 0.7907 | 0.7081 | R2L 0.477 / U2R 0.418 |
