@@ -1,7 +1,12 @@
 # --- data (downloaded programmatically; do not commit) ---
 data/*
 !data/.gitkeep
-!data/SOURCE.md
+# keep provenance (source URLs + hashes) for every dataset, ignore the bulk data
+!data/**/
+data/**/*.txt
+data/**/*.csv
+data/**/*.parquet
+!data/**/SOURCE.md
 
 # --- virtualenv ---
 .venv/

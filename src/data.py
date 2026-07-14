@@ -13,7 +13,7 @@ import pandas as pd
 
 # Repo root = parent of this file's directory (<repo>/src/data.py -> <repo>).
 REPO_ROOT: Path = Path(__file__).resolve().parents[1]
-DATA_DIR: Path = REPO_ROOT / "data"
+DATA_DIR: Path = REPO_ROOT / "data" / "nsl_kdd"
 
 RANDOM_STATE: int = 42
 
@@ -82,8 +82,10 @@ def load_nsl_kdd(split: str) -> pd.DataFrame:
 
     Parameters
     ----------
-    split : {"train", "test"}
-        Which official split to load (``KDDTrain+`` or ``KDDTest+``).
+    split : {"train", "test", "test-21", "train-20"}
+        Which official file to load: full train (``KDDTrain+``), full test
+        (``KDDTest+``), the hard test subset (``KDDTest-21``), or the 20%
+        training subset (``KDDTrain+_20Percent``).
 
     Returns
     -------
@@ -91,7 +93,12 @@ def load_nsl_kdd(split: str) -> pd.DataFrame:
         43 columns (41 features + ``label`` + ``difficulty``), plus derived
         ``binary_label`` (normal/attack) and ``attack_family`` columns.
     """
-    fname = {"train": "KDDTrain+.txt", "test": "KDDTest+.txt"}[split]
+    fname = {
+        "train": "KDDTrain+.txt",
+        "test": "KDDTest+.txt",
+        "test-21": "KDDTest-21.txt",
+        "train-20": "KDDTrain+_20Percent.txt",
+    }[split]
     path = DATA_DIR / fname
     if not path.exists():
         raise FileNotFoundError(
