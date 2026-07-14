@@ -13,6 +13,15 @@ description: >-
 
 # NIDS ML study — project conventions
 
+**Project identity: Adaptive Network Security Analytics Lab** — a security ML
+experimental lab where each phase teaches a *different* data-science problem
+(supervised, anomaly detection, semi-supervised, temporal, online/continual,
+cross-dataset transfer, explainability, drift, graph, adversarial). The full plan
+and tracks live in [`docs/ROADMAP.md`](../../docs/ROADMAP.md). The lab is built on
+the **`security-ml-lab` branch**; `main` holds the stable NSL-KDD `v1.0`.
+Guiding question: *which strategy generalizes most reliably across changing
+environments at an operationally acceptable false-positive rate?*
+
 Research-grade intrusion-detection study. **NSL-KDD** (1999) is the historical
 baseline (standalone; its 41-feature space differs from the others). The modern
 core is the **NetFlow-V2 standardized family** — **NF-UNSW-NB15-v2** (2015),
