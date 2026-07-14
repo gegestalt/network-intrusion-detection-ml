@@ -9,7 +9,7 @@ Official split; metrics on the held-out test set. Leading with **macro-F1** and 
 | LightGBM | binary | KDDTest+ | 0.7850 | 0.7845 | 0.7829 | 0.9608 | 0.9628 | `{'n_estimators': 400, 'num_leaves': 31}` |
 | LightGBM | binary | KDDTest-21 | 0.5911 | 0.5579 | 0.6351 | 0.7889 | 0.9321 | `{'n_estimators': 400, 'num_leaves': 31}` |
 | RandomForest | multiclass | KDDTest+ | 0.7430 | 0.5038 | 0.7019 | — | — | `{'max_depth': 25, 'n_estimators': 300}` |
-| LightGBM | multiclass | KDDTest+ | 0.6267 | 0.4102 | 0.6082 | — | — | `{'n_estimators': 400, 'num_leaves': 31}` |
+| LightGBM | multiclass | KDDTest+ | 0.5614 | 0.2806 | 0.4932 | — | — | `{'n_estimators': 400, 'num_leaves': 31}` |
 
 ## Per-class breakdown (KDDTest+)
 
@@ -41,11 +41,11 @@ Official split; metrics on the held-out test set. Leading with **macro-F1** and 
 
 | class | precision | recall | f1 | support |
 | --- | ---: | ---: | ---: | ---: |
-| normal | 0.6447 | 0.8302 | 0.7258 | 9,711 |
-| DoS | 0.7798 | 0.6058 | 0.6819 | 7,460 |
-| Probe | 0.4592 | 0.5527 | 0.5016 | 2,421 |
-| R2L | 0.6536 | 0.0693 | 0.1254 | 2,885 |
-| U2R | 0.0088 | 0.1343 | 0.0165 | 67 |
+| normal | 0.5036 | 0.9358 | 0.6548 | 9,711 |
+| DoS | 0.8396 | 0.4491 | 0.5852 | 7,460 |
+| Probe | 0.8606 | 0.0892 | 0.1617 | 2,421 |
+| R2L | 0.0112 | 0.0007 | 0.0013 | 2,885 |
+| U2R | 0.0000 | 0.0000 | 0.0000 | 67 |
 
 
 # NSL-KDD — Phase 4: MLP + class-weighting ablation
@@ -54,7 +54,7 @@ Same preprocessing and evaluation as Phase 3. The point of this phase is the **w
 
 | Variant | Task | Accuracy | Macro-F1 | Rare-class recall |
 | --- | --- | ---: | ---: | --- |
-| MLP (unweighted) | binary | 0.7893 | 0.7893 | attack 0.678 |
-| MLP (weighted) | binary | 0.8105 | 0.8104 | attack 0.689 |
-| MLP (unweighted) | multiclass | 0.7816 | 0.6086 | R2L 0.080 / U2R 0.284 |
-| MLP (weighted) | multiclass | 0.7907 | 0.7081 | R2L 0.477 / U2R 0.418 |
+| MLP (unweighted) | binary | 0.8105 | 0.8104 | attack 0.688 |
+| MLP (weighted) | binary | 0.7975 | 0.7975 | attack 0.700 |
+| MLP (unweighted) | multiclass | 0.7484 | 0.5634 | R2L 0.013 / U2R 0.269 |
+| MLP (weighted) | multiclass | 0.7764 | 0.5605 | R2L 0.122 / U2R 0.537 |

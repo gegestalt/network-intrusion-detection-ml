@@ -1,10 +1,10 @@
 # Project progress report
 
-*Snapshot of where the project stands, the reasoning behind each choice, and —
-importantly — an honest list of the current problems in our implementation,
-dataset, and approach. Updated as we go.*
+*Snapshot of where the project stands, the reasoning behind each choice, and the
+current problems worth naming honestly. Updated after the NSL-KDD Phase 3/4
+rerun and runtime-stability fix.*
 
-Last updated: after Phase 1 (EDA), before Phase 2 (preprocessing).
+Last updated: after NSL-KDD Phase 4 rerun.
 
 ---
 
@@ -12,110 +12,74 @@ Last updated: after Phase 1 (EDA), before Phase 2 (preprocessing).
 
 | Phase | What | State |
 |---|---|---|
-| 0 | Repo, venv, pinned deps, git, **verified multi-dataset download** | ✅ done |
-| 1 | EDA on NSL-KDD (5 figures + interpretation) | ✅ done |
-| 2 | Preprocessing pipeline (NSL-KDD) | ▶️ building now |
-| 3 | RF + LightGBM baseline (NSL-KDD) | ⏳ next |
-| 4 | MLP comparison (NSL-KDD) | ⏳ |
-| — | **NSL-KDD deliverable checkpoint** (README results + push) | ⏳ |
-| 5+ | Generalize → UNSW-NB15 → CICIDS2017 → synthesis | ⏳ |
+| 0 | Repo, venv, pinned deps, git, verified downloads | done |
+| 1 | EDA on NSL-KDD | done |
+| 2 | Leakage-safe preprocessing | done |
+| 3 | Random Forest + LightGBM baselines | done |
+| 4 | MLP with/without class weighting | done |
+| Audit | Referee notebook for current-state review | drafted |
+| Next | Stabilize docs, repeat/extend experiments, then modern datasets | in progress |
 
-Working rule in force: **finish NSL-KDD end-to-end before touching UNSW/CICIDS.**
-All three still ship; this only sequences them.
+Working rule in force: **finish NSL-KDD end-to-end before expanding the scope.**
+One complete, reproducible pipeline is the portfolio asset.
 
 ## 2. What physically exists in the repo
 
 ```
-src/            download_data.py (3-dataset, verified), data.py (NSL schema+loaders)
-notebooks/      01_eda.ipynb (executed, figures embedded)
-results/figures 5 Phase-1 figures
-data/           nsl_kdd/ unsw_nb15/ cicids2017/  (bulk gitignored; SOURCE.md kept)
-docs/learning/  00_foundations.md (plain-language explainer)
-.claude/skills/ nids-conventions/  (our conventions, machine-loadable)
-requirements.txt, README (scaffold), .gitignore
+src/            download_data.py · data.py · preprocess.py · evaluate.py
+                train_baselines.py · train_mlp.py
+tests/          pytest coverage for schema, preprocessing, metrics, and MLP pieces
+notebooks/      01_eda.ipynb · 02_referee_audit_current_state.ipynb
+results/        metrics.md · figures/
+docs/learning/  plain-language notes for the completed NSL-KDD phases
+data/           dataset files are gitignored; SOURCE.md provenance is committed
 ```
 
-## 3. Datasets acquired & verified
+## 3. Current NSL-KDD result summary
 
-| Dataset | Rows (train/test) | Features | Split type | Rare class |
-|---|---|---|---|---|
-| NSL-KDD | 125,973 / 22,544 | 41 | official (+ hard KDDTest-21) | U2R (52) |
-| UNSW-NB15 | 175,341 / 82,332 | 42 | official | Worms (130) |
-| CICIDS2017 | 2,830,743 total | 78 | none (we build one) | Heartbleed (11) |
+The latest stable run uses the official `KDDTest+` split and writes full details
+to `results/metrics.md`.
 
-All row/column counts verified on download; SHA-256 hashes in `data/*/SOURCE.md`.
+| Model | Task | Accuracy | Macro-F1 |
+|---|---|---:|---:|
+| Random Forest | binary | 0.777 | 0.776 |
+| LightGBM | binary | 0.785 | 0.785 |
+| Random Forest | 5-class | 0.743 | 0.504 |
+| LightGBM | 5-class | 0.561 | 0.281 |
+| MLP unweighted | binary | 0.811 | 0.810 |
+| MLP weighted | binary | 0.798 | 0.798 |
+| MLP unweighted | 5-class | 0.748 | 0.563 |
+| MLP weighted | 5-class | 0.776 | 0.561 |
 
-## 4. Decisions approved so far
+Interpretation: the MLP currently gives the best 5-class macro-F1, but the
+weighted MLP is best understood as a rare-class recall trade-off rather than a
+clear macro-F1 winner. It improves R2L recall from 0.013 to 0.122 and U2R recall
+from 0.269 to 0.537, while macro-F1 stays about flat.
 
-Encoding **one-hot** (unseen categories → all-zeros), **StandardScaler** numerics,
-**official splits** (no random re-split), **macro-F1 + per-class recall** as
-headline metrics, **LightGBM** as the single boosting library (light tuning only),
-**class weights on the MLP** with a with/without rare-class comparison, and a
-**secondary temporal split** experiment on CICIDS. Full list + rationale is in
-the chat log and encoded in the `nids-conventions` skill.
+## 4. Runtime fix
 
----
+The reported crash was a native LightGBM/OpenMP failure on macOS, not an ordinary
+Python exception. `src/train_baselines.py` now keeps LightGBM and GridSearchCV
+threading conservative (`NIDS_N_JOBS=1` by default, LightGBM `num_threads=1`) and
+sets a local Matplotlib cache directory. This avoids nested parallelism, which is
+the likely trigger for the `libomp.dylib` / `lib_lightgbm.dylib` segfault.
 
-## 5. Current problems — honest list (this is the important part)
+## 5. Current problems — honest list
 
-### 5a. Problems in our **implementation**
-1. **No automated tests yet.** `data.py`/`download_data.py` have smoke tests but no
-   unit tests. For a portfolio piece, a few `pytest` checks (schema, label map,
-   leakage guard) would raise the bar. *Planned: add after the pipeline exists.*
-2. **`num_outbound_cmds` is dead weight.** It's constant (all zeros) in NSL-KDD; it
-   survives into the model as a useless feature. Harmless but untidy. *We flag it;
-   could drop it explicitly.*
-3. **High dimensionality from one-hot `service`.** ~70 service values become ~70
-   columns. Fine for trees; for the MLP it inflates the input layer and most
-   columns are almost always zero (sparse). *Acceptable, but worth naming.*
-4. **Notebook is built via a script, not authored interactively.** Reproducible,
-   but a reviewer opening Jupyter sees generated cells. *Trade-off we chose for
-   determinism.*
-
-### 5b. Problems in the **datasets**
-1. **NSL-KDD is old and synthetic.** It derives from KDD'99, whose traffic was
-   *simulated* in 1998. The attacks (and "normal" behaviour) don't resemble modern
-   networks. Absolute scores here do **not** transfer to production.
-2. **Extreme imbalance may make some classes unlearnable.** 52 U2R training
-   examples (and 11 Heartbleed in CICIDS) may simply be too few for any model to
-   learn reliably. We will likely see near-zero recall there — and that's an
-   honest finding, not a bug.
-3. **CICIDS2017 is messy.** Header whitespace, mojibake labels, NaN/Inf values,
-   duplicate flows, and columns that can *leak* the label (source/dest IP,
-   timestamp). We have a cleaning plan, but cleaning choices affect results.
-4. **The three datasets don't share a feature space.** NSL-KDD (41 features),
-   UNSW-NB15 (42), CICIDS2017 (78) measure *different things*. (See 5c.1.)
-
-### 5c. Problems in our **approach** (the subtle, interview-critical ones)
-1. **"Cross-dataset transfer" in the literal sense is not possible here.** You
-   cannot train a model on NSL-KDD and test it on CICIDS2017 — the input columns
-   are completely different, so the model has nothing to apply. The **honest**
-   version of the "detection goes stale" story is told two ways instead:
-   (a) *within* each dataset, the official train→test shift already hurts (unseen
-   attack types); and (b) the **CICIDS temporal split** (train on earlier days,
-   test on later days) is *real* time-based generalisation within one feature
-   space — that is the cleanest "staleness" experiment we have. We should describe
-   the cross-dataset angle as **"same methodology, three eras, contrast the
-   difficulty each poses,"** not literal model transfer.
-2. **Different split types make absolute numbers non-comparable across datasets.**
-   NSL/UNSW use hard official splits; CICIDS uses an easier stratified split. So
-   CICIDS will look "better" for reasons of *protocol*, not model quality. Only
-   *within-dataset* and *relative* comparisons are clean; we must caveat every
-   cross-dataset table.
-3. **We report on a single fixed split, not cross-validated test performance.**
-   The official test set is one sample; a single number has variance. We mitigate
-   by cross-validating *during tuning* (on train), but the headline test score is
-   still one draw. Standard for these benchmarks, but worth stating.
-4. **Imbalance handling is currently planned only for the MLP.** Trees also
-   support `class_weight`; we may extend the with/without study to them for
-   consistency. *Open item.*
-
-None of these are blockers — they're the kind of limitations a strong write-up
-*names explicitly* rather than hides. Several become bullet points in the final
-README's "Limitations" section.
+1. **Single-seed MLP result.** The MLP conclusion needs repeated seeds before it
+   should be sold as a stable model ranking.
+2. **Class weighting only tested on the MLP.** For a fairer imbalance study, add
+   class-weighted/sample-weighted tree baselines too.
+3. **Phase 4 stores only headline/rare recall.** Save full per-class MLP
+   precision/recall/F1 tables like Phase 3 does.
+4. **NSL-KDD is old and synthetic.** The project value is the methodology and
+   failure analysis, not production-ready absolute scores.
+5. **Rare classes may remain fundamentally under-specified.** U2R has only 52
+   training examples; near-zero recall from some models is an honest benchmark
+   finding, not automatically a code bug.
 
 ## 6. Immediate next step
-Build `src/preprocess.py` (the one-hot + scale `ColumnTransformer`), verify it on
-NSL-KDD (column counts after encoding, class balances for both label schemes,
-proof the leakage-safe encoder handles unseen test services), then pause with
-learning note 01.
+
+Keep NSL-KDD reproducible and documented, then run multi-seed MLP and
+class-weighted tree ablations. After that, move to the modern standardized
+NetFlow-V2 datasets for the larger generalization story.

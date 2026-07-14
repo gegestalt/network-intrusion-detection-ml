@@ -29,7 +29,7 @@ the test set), scoring macro-F1.
 | RandomForest | binary | 0.777 | 0.776 |
 | LightGBM | binary | 0.785 | 0.785 |
 | RandomForest | 5-class | 0.743 | **0.504** |
-| LightGBM | 5-class | 0.627 | 0.410 |
+| LightGBM | 5-class | 0.561 | 0.281 |
 
 Three things here are worth more than the numbers themselves.
 
@@ -77,11 +77,12 @@ test set they came from.
 
 ## 3. RF vs LightGBM — who won?
 Roughly tied on binary (LightGBM +0.9pt). But on the 5-class task **RF beat
-LightGBM on macro-F1 (0.504 vs 0.410)**. Why? LightGBM predicted U2R far too
-liberally (U2R precision 0.009 — almost all false positives), inflating one
-metric while trashing precision. RF was more conservative. Takeaway: "the fancier
-model" doesn't automatically win, *especially* on rare classes — you have to look
-at the per-class breakdown, not the leaderboard.
+LightGBM on macro-F1 (0.504 vs 0.281)**. Why? In the latest stable run, LightGBM
+mostly collapsed the harder minority families: Probe recall fell to 0.09, R2L to
+0.001, and U2R to zero. RF was more conservative and recovered more of the
+non-normal classes. Takeaway: "the fancier model" doesn't automatically win,
+*especially* on rare classes — you have to look at the per-class breakdown, not
+the leaderboard.
 
 ## 4. What the feature-importance plots showed
 Both models leaned on the traffic-statistics features we flagged in EDA —
@@ -102,9 +103,9 @@ sanity check that they learned signal, not noise.
 so it's honest novelty. 2 — ROC-AUC measures ranking ability across thresholds;
 at the default 0.5 threshold the model is too conservative, so recall is low. 3 —
 macro-F1, because it weights the rare, dangerous R2L/U2R classes equally, which
-accuracy drowns out. 4 — LightGBM's U2R predictions were almost all false
-positives (precision 0.009); per-class metrics exposed that the "win" was
-hollow.)*
+accuracy drowns out. 4 — LightGBM mostly missed Probe/R2L/U2R in the 5-class
+setting; per-class metrics exposed that the binary "win" did not transfer to the
+harder task.)*
 
 ---
 *Next (Phase 4): a PyTorch MLP on the identical data — can a neural net beat the

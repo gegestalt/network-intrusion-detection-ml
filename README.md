@@ -27,9 +27,9 @@ this project.
 | Model | Binary macro-F1 | 5-class macro-F1 | R2L recall | U2R recall |
 |---|---:|---:|---:|---:|
 | Random Forest | 0.776 | 0.504 | 0.05 | 0.06 |
-| LightGBM | 0.785 | 0.410 | 0.07 | 0.13 |
-| MLP (unweighted) | 0.789 | 0.609 | 0.08 | 0.28 |
-| **MLP (class-weighted)** | **0.810** | **0.708** | **0.48** | **0.42** |
+| LightGBM | 0.785 | 0.281 | 0.001 | 0.00 |
+| MLP (unweighted) | **0.810** | **0.563** | 0.013 | 0.269 |
+| MLP (class-weighted) | 0.798 | 0.561 | **0.122** | **0.537** |
 
 **Three findings that matter more than the numbers:**
 
@@ -39,20 +39,22 @@ this project.
    split would hide this; the official split honestly measures how detection
    copes with *novel* attacks. This is the "detection goes stale" problem in one
    number.
-2. **Rare = dangerous = missed.** With default training, the two most dangerous
+2. **Rare = dangerous = missed.** With default tree training, the two most dangerous
    attack families — R2L (remote access) and U2R (privilege escalation) — are
    caught **5–6% of the time**, with ~90% predicted as benign. Accuracy (0.74)
    hides this; **macro-F1 (0.50) exposes it.**
-3. **Class weighting is the biggest lever.** Weighting the MLP loss by inverse
-   class frequency lifted **R2L recall 6× (0.08→0.48)** and U2R to 0.42, *while
-   overall accuracy slightly rose*. Catching the crown-jewel attacks cost almost
-   nothing in aggregate — the correct trade for a SOC.
+3. **Class weighting changes the trade-off, not magically fixes the benchmark.**
+   On the latest stable CPU run, weighting the MLP loss lifted **R2L recall from
+   0.013→0.122** and **U2R recall from 0.269→0.537**, while macro-F1 stayed about
+   flat (0.563→0.561). For a SOC, that is still an important knob: you may accept
+   different false alarms if the alternative is missing privilege-escalation
+   attacks.
 
 <p align="center">
   <img src="results/figures/p3_nslkdd_randomforest_multiclass_test_confusion.png" width="90%"><br>
   <em>Baseline RF: R2L/U2R collapse into "normal" (recall 0.05 / 0.06).</em><br><br>
   <img src="results/figures/p4_nslkdd_mlp_weighted_multiclass_confusion.png" width="90%"><br>
-  <em>Class-weighted MLP: the rare-class diagonal recovers (R2L 0.48, U2R 0.42).</em>
+  <em>Class-weighted MLP: rare-class recall improves, especially U2R, but the result still needs multi-seed confirmation.</em>
 </p>
 
 ## Datasets
@@ -88,7 +90,7 @@ gitignored.
 3. **Tree baselines** (`src/train_baselines.py`) — Random Forest + **LightGBM**,
    light CV tuning (train-only), full evaluation.
 4. **MLP** (`src/train_mlp.py`) — PyTorch net (128-64, dropout, early stopping,
-   Apple-MPS), with the **class-weighting ablation**.
+   CPU/Apple-MPS), with the **class-weighting ablation**.
 5. **Evaluation** (`src/evaluate.py`) — one model-agnostic module: macro-F1 +
    per-class recall (never accuracy alone), confusion matrices (raw +
    row-normalized), ROC-AUC + PR-AUC for binary.
@@ -118,7 +120,9 @@ pytest
 ```
 
 Outputs land in `results/metrics.md` and `results/figures/`. Everything is
-deterministic under `RANDOM_STATE = 42`.
+deterministic under `RANDOM_STATE = 42`. On macOS, `src/train_baselines.py`
+also pins native OpenMP thread counts to avoid LightGBM/libomp crashes from
+nested parallelism.
 
 ## Limitations (read these)
 
