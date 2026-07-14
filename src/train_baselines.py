@@ -24,6 +24,9 @@ import numpy as np
 # ColumnTransformer yields a bare numpy array; LightGBM's sklearn wrapper warns
 # about missing feature names on predict. Cosmetic — silence for clean output.
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
+# Nested parallelism (GridSearchCV n_jobs=-1 over an estimator with n_jobs=-1)
+# makes joblib warn it can't propagate config to workers. Harmless — silence it.
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
 from lightgbm import LGBMClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
