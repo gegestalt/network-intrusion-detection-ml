@@ -1,19 +1,23 @@
 """Preprocessing pipeline: raw dataframes -> model-ready numeric matrices.
 
-Design goals
-------------
-* **Leakage-safe by construction.** The transformer is *fit on training data
-  only* and then applied unchanged to test data. Nothing about the test set
-  informs any scaling statistic or category vocabulary.
-* **Apples-to-apples.** One shared pipeline feeds every model (RF, LightGBM,
-  MLP), so differences in results come from the models, not the inputs.
-* **Dataset-agnostic core.** ``build_preprocessor`` / ``prepare`` take explicit
-  column lists, so the same code will serve UNSW-NB15 and CICIDS2017 later. For
-  now only the NSL-KDD convenience wrapper is wired up (deliverable-first).
+LEARNING SCAFFOLD
+-----------------
+This file is intentionally incomplete. The plumbing (the ``PreparedData``
+container, imports, and the ``__main__`` self-check) is written for you. YOU
+implement the three functions marked ``# TODO`` — they are the high-value core.
 
-Categorical features -> OneHotEncoder(handle_unknown="ignore"): unseen test-set
-categories become an all-zero block instead of raising. Numeric features ->
-StandardScaler (mean 0, sd 1): needed by the MLP, harmless to trees.
+Concepts recap (full teach-up was in chat):
+* Categorical features (text) -> **OneHotEncoder** so we don't invent a fake
+  ordering. Use ``handle_unknown="ignore"`` so unseen test categories become an
+  all-zero block instead of raising.
+* Numeric features -> **StandardScaler** (mean 0, sd 1) so the MLP trains well;
+  harmless to trees. One shared pipeline keeps every model apples-to-apples.
+* **Leakage rule:** ``fit`` (or ``fit_transform``) on TRAIN only, then
+  ``transform`` TEST with the statistics learned from train. Never fit on test.
+
+Definition of done: ``python src/preprocess.py`` runs and prints, for both
+schemes, ``X_train (125973, 122)`` / ``X_test (22544, 122)``, correct class
+counts, and no NaNs.
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ import data as D  # src/data.py (NSL-KDD schema + loaders)
 
 @dataclass
 class PreparedData:
-    """Everything a model needs, plus metadata for interpretation."""
+    """Everything a model needs, plus metadata for interpretation. (Given.)"""
 
     X_train: np.ndarray
     X_test: np.ndarray
@@ -48,11 +52,27 @@ class PreparedData:
 
 def build_preprocessor(categorical: list[str],
                        numeric: list[str]) -> ColumnTransformer:
-    """One-hot the categoricals, standard-scale the numerics; drop the rest."""
+    """Return an (unfitted) ColumnTransformer.
+
+    It must one-hot-encode the ``categorical`` columns and standard-scale the
+    ``numeric`` columns, dropping everything else.
+
+    TODO(you):
+      * Build a ``ColumnTransformer`` with two transformers:
+          - "cat": OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+                   applied to ``categorical``
+          - "num": StandardScaler() applied to ``numeric``
+      * Set ``remainder="drop"`` (label/difficulty columns must not leak in).
+      * Hint: pass ``verbose_feature_names_out=False`` so feature names stay
+        clean (e.g. "protocol_type_tcp" not "cat__protocol_type_tcp").
+    """
     return ColumnTransformer(
         transformers=[
-            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False),
-             categorical),
+            (
+                "cat",
+                OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+                categorical,
+            ),
             ("num", StandardScaler(), numeric),
         ],
         remainder="drop",
@@ -61,7 +81,7 @@ def build_preprocessor(categorical: list[str],
 
 
 def _feature_names(pre: ColumnTransformer) -> list[str]:
-    """Column names after fitting (one-hot names + numeric names, in order)."""
+    """Column names after fitting (one-hot names + numeric names). (Given.)"""
     return list(pre.get_feature_names_out())
 
 
@@ -77,28 +97,48 @@ def prepare(train_df: pd.DataFrame,
 
     ``class_order`` fixes the integer mapping (index i <-> class_order[i]) so it
     is stable and readable across models and confusion matrices.
+
+    TODO(you):
+      * pre = build_preprocessor(categorical, numeric)
+      * X_train = pre.fit_transform(train_df)   # FIT ON TRAIN ONLY
+      * X_test  = pre.transform(test_df)         # transform test w/ train stats
+      * Encode labels to integers using ``class_order``:
+          label_to_int = {c: i for i, c in enumerate(class_order)}
+          y_train = y_train_labels.map(label_to_int).to_numpy()
+          (same for y_test)
+      * Return a PreparedData(...) with feature_names=_feature_names(pre).
     """
     pre = build_preprocessor(categorical, numeric)
-    X_train = pre.fit_transform(train_df)          # FIT on train only
-    X_test = pre.transform(test_df)                # transform test with train's stats
+    X_train = pre.fit_transform(train_df)
+    X_test = pre.transform(test_df)
 
-    label_to_int = {c: i for i, c in enumerate(class_order)}
-    y_train = y_train_labels.map(label_to_int).to_numpy()
-    y_test = y_test_labels.map(label_to_int).to_numpy()
+    label_to_int = {label: i for i, label in enumerate(class_order)}
+    y_train_mapped = y_train_labels.map(label_to_int)
+    y_test_mapped = y_test_labels.map(label_to_int)
+    # Fail loud on any label absent from class_order (else it becomes a silent
+    # NaN and a cryptic int-cast error downstream).
+    for split_name, mapped, raw in (("train", y_train_mapped, y_train_labels),
+                                    ("test", y_test_mapped, y_test_labels)):
+        if mapped.isna().any():
+            bad = sorted(set(raw[mapped.isna()].astype(str)))
+            raise ValueError(
+                f"{split_name}: labels absent from class_order {class_order}: {bad}"
+            )
+    y_train = y_train_mapped.to_numpy(dtype=np.int64)
+    y_test = y_test_mapped.to_numpy(dtype=np.int64)
 
     return PreparedData(
-        X_train=X_train, X_test=X_test,
-        y_train=y_train, y_test=y_test,
+        X_train=X_train,
+        X_test=X_test,
+        y_train=y_train,
+        y_test=y_test,
         feature_names=_feature_names(pre),
-        classes=list(class_order),
+        classes=list(class_order),  # defensive copy; don't alias the caller's list
         preprocessor=pre,
         scheme=scheme,
     )
 
 
-# --------------------------------------------------------------------------- #
-# NSL-KDD convenience wrapper (the only dataset wired up for now)
-# --------------------------------------------------------------------------- #
 def prepare_nsl_kdd(scheme: str, test_split: str = "test") -> PreparedData:
     """Load NSL-KDD and return model-ready arrays for the chosen label scheme.
 
@@ -107,34 +147,52 @@ def prepare_nsl_kdd(scheme: str, test_split: str = "test") -> PreparedData:
     scheme : {"binary", "multiclass"}
         ``binary`` = normal(0) vs attack(1); ``multiclass`` = the 5 families.
     test_split : {"test", "test-21"}
-        Evaluate on the full official test set or the hard KDDTest-21 subset.
+        Full official test set, or the hard KDDTest-21 subset.
+
+    TODO(you):
+      * train = D.load_nsl_kdd("train"); test = D.load_nsl_kdd(test_split)
+      * For scheme == "binary":
+          - build y label Series of strings "normal"/"attack" from the
+            "binary_label" column (0->"normal", 1->"attack")
+          - class_order = ["normal", "attack"]
+      * For scheme == "multiclass":
+          - y labels come straight from the "attack_family" column
+          - class_order = D.FAMILY_ORDER
+      * else: raise ValueError.
+      * Return prepare(train, test, D.CATEGORICAL_COLS, D.NUMERIC_COLS,
+                       y_tr, y_te, class_order, scheme)
     """
     train = D.load_nsl_kdd("train")
     test = D.load_nsl_kdd(test_split)
 
     if scheme == "binary":
-        y_tr = train["binary_label"].map({0: "normal", 1: "attack"})
-        y_te = test["binary_label"].map({0: "normal", 1: "attack"})
+        label_names = {0: "normal", 1: "attack"}
+        y_tr = train["binary_label"].map(label_names)
+        y_te = test["binary_label"].map(label_names)
         class_order = ["normal", "attack"]
     elif scheme == "multiclass":
         y_tr = train["attack_family"]
         y_te = test["attack_family"]
-        class_order = D.FAMILY_ORDER  # normal, DoS, Probe, R2L, U2R
+        class_order = D.FAMILY_ORDER
     else:
-        raise ValueError(f"scheme must be 'binary' or 'multiclass', got {scheme!r}")
+        raise ValueError(
+            f"unknown scheme {scheme!r}; expected 'binary' or 'multiclass'"
+        )
 
     return prepare(
-        train_df=train, test_df=test,
-        categorical=D.CATEGORICAL_COLS,
-        numeric=D.NUMERIC_COLS,
-        y_train_labels=y_tr, y_test_labels=y_te,
-        class_order=class_order, scheme=scheme,
+        train,
+        test,
+        D.CATEGORICAL_COLS,
+        D.NUMERIC_COLS,
+        y_tr,
+        y_te,
+        class_order,
+        scheme,
     )
 
 
 if __name__ == "__main__":
-    # Verification / smoke test — prints shapes, class balances, and proves the
-    # leakage-safe encoder handles test-only categories.
+    # Self-check harness (given). Run: python src/preprocess.py
     print("=" * 70)
     for scheme in ("binary", "multiclass"):
         pd_ = prepare_nsl_kdd(scheme)
@@ -148,13 +206,5 @@ if __name__ == "__main__":
             print(f"  {name} counts: {pretty}")
         assert not np.isnan(pd_.X_train).any(), "NaNs in X_train"
         assert not np.isnan(pd_.X_test).any(), "NaNs in X_test"
-
-    # Prove handle_unknown works: services present in test but never in train.
-    tr = D.load_nsl_kdd("train")
-    te = D.load_nsl_kdd("test")
-    unseen = set(te["service"].unique()) - set(tr["service"].unique())
-    n_rows_unseen = te["service"].isin(unseen).sum()
-    print(f"\nLeakage-safe check: {len(unseen)} service value(s) appear only in "
-          f"test ({sorted(unseen)}), affecting {n_rows_unseen:,} rows.")
-    print("  -> encoded as all-zero service block (no crash, no train leakage).")
+    print("\nAll checks passed." )
     print("=" * 70)

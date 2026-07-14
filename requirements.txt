@@ -28,6 +28,9 @@ torch==2.13.0
 # --- data download ---
 requests==2.34.2
 
+# --- testing (TDD) ---
+pytest==9.1.1
+
 # --- notebooks ---
 jupyter==1.1.1
 jupyterlab==4.6.1

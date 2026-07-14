@@ -56,6 +56,12 @@ documented in the README). `NF-UQ-NIDS-v2` (merged) is future work.
    preserved in full), and **teach the scaling techniques as first-class
    material** — chunked reading, dtype downcasting, memory profiling, and
    when/why to reach for each.
+9. **TDD.** The project is test-driven. New high-value components get a `pytest`
+   test (ideally written *before* the implementation) covering the invariants
+   that matter — schema, leakage (fit-on-train-only), unseen-category tolerance,
+   fail-loud on bad input. Tests live in `tests/`; data-dependent ones use the
+   `needs_data` marker so `pytest` still passes on a fresh clone. Keep the suite
+   green before every commit/push.
 
 ## Data layout
 Downloaded + verified by `src/download_data.py` (row/col checks, SHA-256 to
