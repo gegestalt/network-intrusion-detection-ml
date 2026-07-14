@@ -133,7 +133,29 @@ data/
   (U2R/R2L; Worms; Heartbleed/Infiltration) **with vs without** weighting — the
   contrast is a required result, with a teach-up before implementing.
 
-## Evaluation protocol (identical for every model & dataset)
+## Per-dataset method differentiation (REQUIRED)
+Each dataset must be **processed, modelled, and evaluated with a *distinct*
+approach** — not one pipeline copy-pasted. Demonstrate range; pick the technique
+that fits each dataset's defining challenge. Planned assignment:
+
+| Dataset | Preprocessing angle | Learning / classification technique | Extra evaluation angle |
+| --- | --- | --- | --- |
+| **NSL-KDD** | one-hot + scale | RF, LightGBM, MLP (supervised baseline) | ROC/PR, KDDTest-21, class-weight ablation |
+| **NF-UNSW-NB15-v2** | NetFlow 43-feat + resampling | **imbalance arsenal**: SMOTE / class-weight / cost-sensitive boosting; calibrated classifier | PR-curve threshold tuning, calibration curves |
+| **NF-ToN-IoT-v2** | feature selection on 43-feat | **explainability-first**: SHAP + a compact/interpretable model (e.g. shallow GBM or linear), maybe an autoencoder for anomaly detection | SHAP global/local, compact-model size/latency |
+| **NF-CSE-CIC-IDS2018-v2** | chunked/downcast big-data | **scaling / online**: histogram GBM at scale or `SGDClassifier` partial_fit on samples | temporal-drift eval, sample-size sensitivity |
+| **Cross-dataset** | shared 43-feat schema | **transfer learning / unsupervised** (Isolation Forest / autoencoder) | train-on-A / test-on-B generalization gap |
+
+Only the **core comparison metrics stay identical** (below) so cross-dataset
+synthesis is possible; the *techniques and extra evaluation angles differ*.
+
+## Reproducibility caveat (learned the hard way)
+MLP-on-MPS is **non-deterministic run-to-run**; single-thread vs parallel LightGBM
+also shifts results. Before making any strong claim ("X beats Y", "weighting
+helps"), **run ≥3 seeds and report mean ± spread**, or mark the result as
+provisional. A one-off number is a hypothesis, not a finding.
+
+## Evaluation protocol (core metrics — identical for every model & dataset)
 Report on the held-out test set (official where it exists; constructed for CICIDS):
 - accuracy, **macro P/R/F1**, weighted F1, and the **full per-class report**
   (rare classes — U2R/R2L, Worms, Heartbleed/Infiltration — are the point).
