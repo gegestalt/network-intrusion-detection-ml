@@ -13,10 +13,17 @@ description: >-
 
 # NIDS ML study — project conventions
 
-Research-grade intrusion-detection study across three benchmarks from three eras:
-**NSL-KDD** (1999-era), **UNSW-NB15** (2015), **CICIDS2017** (2017). The
-cross-dataset angle — models trained on one era/balance evaluated against others
-— mirrors the real SOC problem of detection logic going stale as attacks evolve.
+Research-grade intrusion-detection study. **NSL-KDD** (1999) is the historical
+baseline (standalone; its 41-feature space differs from the others). The modern
+core is the **NetFlow-V2 standardized family** — **NF-UNSW-NB15-v2** (2015),
+**NF-ToN-IoT-v2** (2020), **NF-CSE-CIC-IDS2018-v2** (2018) — which all share one
+**43-feature NetFlow schema**. That shared schema enables *true cross-dataset
+transfer* (train on A, test on B), the real "detection goes stale as attacks
+evolve" experiment. The raw UNSW-NB15 / CICIDS2017 CSVs are **retired** in favour
+of their NetFlow-V2 versions (their `SOURCE.md` provenance is kept; migration is
+documented in the README). `NF-UQ-NIDS-v2` (merged) is future work.
+
+**Learning is the primary goal; timeline is secondary.**
 
 ## Working rules (standing)
 1. **Deliverable-first.** Finish **NSL-KDD end-to-end** (EDA → preprocessing → RF
@@ -33,6 +40,22 @@ cross-dataset angle — models trained on one era/balance evaluated against othe
    torch MPS). Pinned deps in `requirements.txt`.
 5. **Lead with macro-F1 + per-class recall, not accuracy** — every dataset here
    is imbalanced; accuracy flatters trivial majority predictors.
+6. **LEARNING MODE (teach-then-do).** For each new component: (a) explain the
+   concept + plan first; (b) for **high-learning-value** code — preprocessing
+   transforms, model training loops, evaluation functions, and *especially* the
+   PyTorch MLP — **scaffold signatures + docstrings + TODOs and let the USER write
+   the implementation**; review their code like a strict senior engineer (bugs,
+   style, better idioms) but **do not rewrite it unless asked**; (c) the assistant
+   fully writes low-learning-value plumbing (download/path/plotting boilerplate);
+   (d) after each phase, **quiz the user 3-5 questions** and grade honestly.
+7. **v1.0 snapshot.** When NSL-KDD is fully done (models, results, README
+   section), **tag `v1.0`** with the repo presentable at that tag. After that the
+   project is open-ended.
+8. **Big-data scaling is curriculum, not an obstacle.** For ToN-IoT (~16.9M) /
+   CSE-CIC-IDS2018 (~18.9M) flows: develop on stratified samples (rare classes
+   preserved in full), and **teach the scaling techniques as first-class
+   material** — chunked reading, dtype downcasting, memory profiling, and
+   when/why to reach for each.
 
 ## Data layout
 Downloaded + verified by `src/download_data.py` (row/col checks, SHA-256 to
