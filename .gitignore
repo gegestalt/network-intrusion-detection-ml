@@ -1,0 +1,33 @@
+# --- data (downloaded programmatically; do not commit) ---
+data/*
+!data/.gitkeep
+!data/SOURCE.md
+
+# --- virtualenv ---
+.venv/
+venv/
+env/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+*.pkl
+*.joblib
+
+# --- jupyter ---
+profile_default/
+ipython_config.py
+
+# --- os / editor ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- models / large artifacts (keep results/ figures + metrics, ignore heavy checkpoints) ---
+*.pt
+*.pth
+models/
