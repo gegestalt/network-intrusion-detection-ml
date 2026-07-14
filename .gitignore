@@ -25,6 +25,8 @@ __pycache__/
 # --- jupyter ---
 profile_default/
 ipython_config.py
+.jupyter/
+.matplotlib-cache/
 
 # --- agent / tooling scratch ---
 .agents/
