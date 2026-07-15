@@ -30,6 +30,7 @@ ipython_config.py
 
 # --- agent / tooling scratch ---
 .agents/
+.jupyter-config/
 
 # --- os / editor ---
 .DS_Store
