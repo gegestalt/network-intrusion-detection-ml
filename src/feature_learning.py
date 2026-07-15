@@ -44,7 +44,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import matthews_corrcoef
 from sklearn.preprocessing import StandardScaler
 
-import ciciot
+import ciciot2023 as ciciot
 import data as D
 import evaluate as E
 import preprocess as P
@@ -106,14 +106,16 @@ def load_nsl_kdd_binary() -> DatasetBundle:
 def load_ciciot_dev_binary(max_train: int = 120_000, max_test: int = 40_000) -> DatasetBundle | None:
     """Load the CICIoT2023 dev parquet if present; otherwise skip gracefully."""
     try:
-        train = ciciot.load("train")
-        test = ciciot.load("test")
+        train = ciciot.load_parquet("train")
+        test = ciciot.load_parquet("test")
     except FileNotFoundError:
         return None
 
     feature_names = ciciot.feature_columns(train)
-    train_idx = stratified_cap_indices(train["label"].to_numpy(), max_train)
-    test_idx = stratified_cap_indices(test["label"].to_numpy(), max_test)
+    # consolidated loader: `binary_label` is the 0/1 target (`label` is now the
+    # fine attack name).
+    train_idx = stratified_cap_indices(train["binary_label"].to_numpy(), max_train)
+    test_idx = stratified_cap_indices(test["binary_label"].to_numpy(), max_test)
 
     X_train_raw = train.iloc[train_idx][feature_names].to_numpy(dtype=np.float32)
     X_test_raw = test.iloc[test_idx][feature_names].to_numpy(dtype=np.float32)
@@ -124,8 +126,8 @@ def load_ciciot_dev_binary(max_train: int = 120_000, max_test: int = 40_000) -> 
         name="ciciot2023_dev",
         X_train=X_train,
         X_test=X_test,
-        y_train=train.iloc[train_idx]["label"].to_numpy(dtype=np.int64),
-        y_test=test.iloc[test_idx]["label"].to_numpy(dtype=np.int64),
+        y_train=train.iloc[train_idx]["binary_label"].to_numpy(dtype=np.int64),
+        y_test=test.iloc[test_idx]["binary_label"].to_numpy(dtype=np.int64),
         feature_names=feature_names,
         classes=["benign", "attack"],
         caveat="Downsampled random dev split; not the full official raw CSV release.",

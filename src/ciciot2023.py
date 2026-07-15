@@ -7,15 +7,20 @@ or pass a custom path to the helpers.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
 
 import data as D
 
 REPO_ROOT: Path = D.REPO_ROOT
 DATA_DIR: Path = REPO_ROOT / "data" / "ciciot2023"
 CSV_DIR: Path = DATA_DIR / "CSV"
+# Pre-split, downsampled parquet dev sample (see data/ciciot2023/SOURCE.md).
+PARQUET_SPLITS: dict[str, str] = {"train": "train.parquet", "test": "test.parquet"}
 
 DATASET_PAGE = "https://www.unb.ca/cic/datasets/iotdataset-2023.html"
 DOWNLOAD_PAGE = "https://www.unb.ca/cic/datasets/iotdataset-2023.html"
@@ -177,7 +182,8 @@ def load_csv_sample(
 
 def feature_columns(df: pd.DataFrame) -> list[str]:
     """Return model feature columns after dropping labels/provenance columns."""
-    drop = {"label", "Label", "attack_category", "binary_label", "source_file"}
+    drop = {"label", "Label", "attack_category", "attack_class", "binary_label",
+            "source_file"}
     return [c for c in df.columns if c not in drop]
 
 
@@ -199,12 +205,143 @@ def phase1_summary(df: pd.DataFrame) -> dict:
     }
 
 
-if __name__ == "__main__":
-    try:
-        sample = load_csv_sample()
-    except FileNotFoundError as exc:
-        print(exc)
+# --------------------------------------------------------------------------- #
+# Parquet dev sample: canonical loader + scale-only preprocessing + audit
+# --------------------------------------------------------------------------- #
+LABEL_LEVELS: dict[str, str] = {
+    "binary": "binary_label",       # 0 benign / 1 attack
+    "category": "attack_category",  # 8 canonical CATEGORY_ORDER
+    "fine": "label",                # ~34 fine attack names
+}
+
+
+def load_parquet(split: str) -> pd.DataFrame:
+    """Load a CICIoT2023 parquet dev split with canonical label columns.
+
+    Produces the same label convention as ``add_label_columns``: ``label`` (fine
+    string), ``attack_category`` (canonical 8), ``binary_label`` (0/1). The
+    parquet's own ``label`` (binary) and ``attack_class`` columns are re-derived
+    so categories always come from the tolerant fine-label mapper.
+    """
+    fname = PARQUET_SPLITS.get(split)
+    if fname is None:
+        raise ValueError(f"split must be one of {list(PARQUET_SPLITS)}, got {split!r}")
+    path = DATA_DIR / fname
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found. See data/ciciot2023/SOURCE.md for the source.")
+    raw = pd.read_parquet(path)
+    feats = [c for c in raw.columns if c not in ("Label", "attack_class", "label")]
+    out = raw[feats].copy()
+    out["label"] = raw["Label"].astype(str).str.strip()        # fine
+    out["attack_category"] = out["label"].map(attack_category)  # canonical 8
+    out["binary_label"] = raw["label"].astype(int)             # 0 benign / 1 attack
+    return out
+
+
+@dataclass
+class CicPrepared:
+    """Model-ready arrays for one CICIoT2023 label level."""
+
+    X_train: np.ndarray
+    X_test: np.ndarray
+    y_train: np.ndarray
+    y_test: np.ndarray
+    feature_names: list[str]
+    classes: list[str]
+    scaler: StandardScaler
+    level: str
+
+    @property
+    def n_features(self) -> int:
+        return self.X_train.shape[1]
+
+
+def prepare(train_df: pd.DataFrame, test_df: pd.DataFrame,
+            level: str = "binary") -> CicPrepared:
+    """Scale-only, leakage-safe preprocessing for a chosen label level.
+
+    All CICIoT2023 features are numeric → StandardScaler only (no one-hot).
+    Inf→NaN, median imputation, and scaling are all fit on **train only**.
+    """
+    if level not in LABEL_LEVELS:
+        raise ValueError(f"level must be one of {list(LABEL_LEVELS)}, got {level!r}")
+    feats = feature_columns(train_df)
+
+    Xtr = train_df[feats].replace([np.inf, -np.inf], np.nan)
+    Xte = test_df[feats].replace([np.inf, -np.inf], np.nan)
+    medians = Xtr.median()                        # train-only imputation
+    Xtr, Xte = Xtr.fillna(medians), Xte.fillna(medians)
+
+    scaler = StandardScaler().fit(Xtr)            # FIT ON TRAIN ONLY
+    X_train, X_test = scaler.transform(Xtr), scaler.transform(Xte)
+
+    col = LABEL_LEVELS[level]
+    if level == "binary":
+        classes = ["Benign", "Attack"]
+        y_train = train_df[col].to_numpy(dtype=np.int64)
+        y_test = test_df[col].to_numpy(dtype=np.int64)
     else:
-        s = phase1_summary(sample)
-        print(f"rows={s['rows']:,} features={s['n_features']} labels={s['n_fine_labels']}")
-        print(s["category_counts"])
+        classes = list(CATEGORY_ORDER) if level == "category" \
+            else sorted(train_df[col].unique())
+        idx = {c: i for i, c in enumerate(classes)}
+
+        def _enc(s: pd.Series, name: str) -> np.ndarray:
+            m = s.map(idx)
+            if m.isna().any():
+                bad = sorted(set(s[m.isna()].astype(str)))
+                raise ValueError(f"{name}: labels not in {classes}: {bad}")
+            return m.to_numpy(dtype=np.int64)
+
+        y_train = _enc(train_df[col], "train")
+        y_test = _enc(test_df[col], "test")
+
+    return CicPrepared(X_train, X_test, y_train, y_test, list(feats),
+                       list(classes), scaler, level)
+
+
+def data_quality_audit(df: pd.DataFrame, name: str) -> list[str]:
+    """Markdown lines: missing / inf / duplicate / (near-)constant + consistency."""
+    feats = feature_columns(df)
+    X = df[feats]
+    n = len(df)
+    n_missing = int(X.isna().sum().sum())
+    n_inf = int(np.isinf(X.select_dtypes("number").to_numpy()).sum())
+    n_dup = int(df.duplicated().sum())
+    constant = [c for c in feats if X[c].nunique(dropna=False) <= 1]
+    near = [c for c in feats if X[c].nunique(dropna=False) > 1
+            and X[c].value_counts(normalize=True).iloc[0] > 0.999]
+    bad = df[(df["attack_category"] == "Benign") != (df["binary_label"] == 0)]
+    return [f"### {name}  ({n:,} rows x {len(feats)} features)", "",
+            f"- missing cells: **{n_missing:,}**",
+            f"- infinite cells: **{n_inf:,}**",
+            f"- duplicated rows: **{n_dup:,}** ({n_dup / n * 100:.2f}%)",
+            f"- constant features: **{len(constant)}** {constant or ''}",
+            f"- near-constant (>99.9% one value): **{len(near)}** {near or ''}",
+            f"- binary/category consistency: "
+            f"**{'OK' if bad.empty else f'{len(bad)} mismatches'}**", ""]
+
+
+if __name__ == "__main__":
+    if (DATA_DIR / PARQUET_SPLITS["train"]).exists():
+        tr, te = load_parquet("train"), load_parquet("test")
+        out = ["# CICIoT2023 (parquet dev) — data-quality & leakage audit", "",
+               "All features numeric → scale-only preprocessing. This dev sample "
+               "uses a **random** split (in-distribution — caveat every score). No "
+               "IP/port/timestamp columns → host/time leakage already avoided.", ""]
+        out += data_quality_audit(tr, "train")
+        out += data_quality_audit(te, "test")
+        report = "\n".join(out) + "\n"
+        (REPO_ROOT / "results" / "ciciot2023_quality.md").write_text(report,
+                                                                     encoding="utf-8")
+        print(report)
+    else:
+        try:
+            sample = load_csv_sample()
+        except FileNotFoundError as exc:
+            print(exc)
+        else:
+            s = phase1_summary(sample)
+            print(f"rows={s['rows']:,} features={s['n_features']} "
+                  f"labels={s['n_fine_labels']}")
+            print(s["category_counts"])
